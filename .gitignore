@@ -2,3 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Symlink or physical copy of data folder
+/data
