@@ -2,7 +2,9 @@ library(shiny)
 library(data.table)
 library(sf)
 library(ggplot2)
+library(gt)
 
+# FIXME In general, can this all be sped up by running portions of code only when needed? i.e. make more reactive? Not sure.
 
 # Initial processing ------------------------------------------------------
 
@@ -32,13 +34,23 @@ foreign_extinction_flow_sums <- get_baseline(foreign_extinction_flow_sums)
 # Join lookup tables with descriptive names to the data where needed.
 county_goods_flow_sums <- bea_lookup[county_goods_flow_sums, on = .(BEA_code)]
 
+# Reorder land types and taxa to ordered factors for plotting
+land_options <- c('annual', 'permanent', 'pasture')
+taxa_options <- c('plants', 'amphibians', 'birds', 'mammals', 'reptiles')
+county_land_flow_sums[, land_type := factor(land_type, levels = land_options)]
+foreign_land_flow_sums[, land_type := factor(land_type, levels = land_options)]
+county_extinction_flow_sums[, taxon := factor(taxon, levels = taxa_options)]
+county_extinction_flow_sums[, land_type := factor(land_type, levels = land_options)]
+foreign_extinction_flow_sums[, taxon := factor(taxon, levels = taxa_options)]
+foreign_extinction_flow_sums[, land_type := factor(land_type, levels = land_options)]
+
 # Create name value pairs for the flow subcategories menu options
 goods_options <- setNames(bea_lookup[['BEA_code']][1:10], bea_lookup[['ag_good_short_name']][1:10])
-land_options <- setNames(c('annual', 'pasture', 'permanent'), c('Annual cropland', 'Permanent cropland', 'Pastureland'))
-taxa_options <- c('plants', 'amphibians', 'birds', 'mammals', 'reptiles')
+names(land_options) <- c('Annual cropland', 'Permanent cropland', 'Pastureland')
 
 # gg stuff
-plot_theme <- theme_bw()
+plot_theme <- theme_bw() +
+    theme(strip.background = element_blank())
 brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", 
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
 
@@ -127,7 +139,7 @@ ui <- fluidPage(
         mainPanel(
             tabsetPanel(type = 'tabs',
                         tabPanel('Plot', plotOutput('plot')),
-                        tabPanel('Table', tableOutput('table')),
+                        tabPanel('Table', gt_output('table')),
                         tabPanel('Map', plotOutput('map'))
             )
         )
@@ -135,76 +147,107 @@ ui <- fluidPage(
 )
 
 
+# Data preparation function -----------------------------------------------
+
+# This function is called within each of the three tabs to return data to be plotted
+prepare_data <- function(input) {
+    scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
+    flow_type <- input[['flow_type']]
+    
+    # Define column name to plot, depending on flow direction and flow origin
+    col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
+    col_baseline <- paste(col_value, 'baseline', sep = '_')
+    
+    # Select data frame to plot.
+    # Subset rows based on selected subcategories.
+    # Calculate sum of flows by scenarios, summing across all selected subcategories.
+    if (flow_type == 'goods') {
+        # FIXME Inbound foreign goods will be in units of tonnes.
+        
+        dat <- copy(county_goods_flow_sums)
+        fill_var <- 'ag_good_short_name'
+        scale_name <- 'Agricultural goods category'
+        y_name <- 'Agricultural goods flow (million USD)'
+        dat_plot <- dat[BEA_code %in% input[['goods_subcats']], 
+                        lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[BEA_code %in% input[['goods_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    if (flow_type == 'land') {
+        dat <- copy(county_land_flow_sums)
+        fill_var <- 'land_type'
+        scale_name <- 'Land use category'
+        y_name <- parse(text = 'Land~flow~(km^2)')
+        dat_plot <- dat[land_type %in% input[['land_subcats']], 
+                        lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    if (flow_type == 'biodiv') {
+        dat <- copy(county_extinction_flow_sums)
+        fill_var <- 'taxon'
+        scale_name <- 'Taxonomic group'
+        y_name <- 'Biodiversity threat flow (potential extinctions)'
+        dat_plot <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
+                        lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    # Normalize value by baseline if selected
+    if (input[['normalize']]) set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
+    
+    return(list(data = dat_plot, data_map = dat_map, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
+}
+
+
 # Server function (render plots and maps) ---------------------------------
 
 server <- function(input, output) {
     
     output$plot <- renderPlot({
-        scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
-        flow_type <- input[['flow_type']]
-        
-        # Define column name to plot, depending on flow direction and flow origin
-        col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
-        col_baseline <- paste(col_value, 'baseline', sep = '_')
-        
-        # Select data frame to plot.
-        # Subset rows based on selected subcategories.
-        # Calculate sum of flows by scenarios, summing across all selected subcategories.
-        if (flow_type == 'goods') {
-            # FIXME Inbound foreign goods will be in units of tonnes.
-            
-            dat_plot <- county_goods_flow_sums
-            fill_var <- 'ag_good_short_name'
-            scale_name <- 'Agricultural goods category'
-            y_name <- 'Agricultural goods flow (million USD)'
-            dat_plot <- dat_plot[BEA_code %in% input[['goods_subcats']], 
-                                 lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        }
-        if (flow_type == 'land') {
-            dat_plot <- county_land_flow_sums
-            fill_var <- 'land_type'
-            scale_name <- 'Land use category'
-            y_name <- parse(text = 'Land~flow~(km^2)')
-            dat_plot <- dat_plot[land_type %in% input[['land_subcats']], 
-                                 lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        }
-        if (flow_type == 'biodiv') {
-            dat_plot <- county_extinction_flow_sums
-            fill_var <- 'taxon'
-            scale_name <- 'Taxonomic group'
-            y_name <- 'Biodiversity threat flow (potential extinctions)'
-            dat_plot <- dat_plot[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
-                                 lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        }
-        
-        # Normalize value by baseline if selected
-        if (input[['normalize']]) set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
-        
-        dat_plot[, scenario := interaction(scenario_diet, scenario_waste)]
+        tab_data <- prepare_data(input)
         
         # FIXME Possibly include two plots: a dodged or stacked geom_col so you can see each one separately, and 
         # FIXME a summed geom_col for the total of all categories selected.
         
         # FIXME the log scale is not good for geom_col because there is no bottom of the bar. Maybe use point?
         
-        ggplot(dat_plot, aes_string(x = 'scenario_diet', y = col_value, fill = fill_var)) +
+        ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']])) +
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
             geom_col(position = 'dodge') +
-            scale_fn(name = y_name, expand = expansion(mult = c(0, 0.02))) +
-            scale_fill_manual(name = scale_name, values = brewer_cols) +
-            scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels)
+            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02))) +
+            scale_fill_manual(name = tab_data[['scale_name']], values = brewer_cols) +
+            scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
+            plot_theme
         
     })
     
-    output$table <- renderTable({
-        # PUT STUFF HERE. 
-        # Also it might be neat to allow the user to subset the data by county or country in the table, and/or sort it
+    output$table <- render_gt({
+       tab_data <- prepare_data(input)
+       tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
+       gt(tab_data[['data']]) %>%
+           cols_label(scenario_diet = 'Diet scenario',
+                      scenario_waste = 'Waste scenario')
+       
+       # FIXME Improve column labels
+       # FIXME Add color shading to the value column
+       
+       # FIXME right now it's the summed up data but maybe we can also show data by county or country?
+       # FIXME Also it might be neat to allow the user to subset the data by county or country in the table, and/or sort it
     })
     
     output$map <- renderPlot({
-        # THE MAP SHOULD ONLY SHOW ONE SELECTED SCENARIO
+        tab_data <- prepare_data(input)
         
+        # FIXME Here, join the map data with the appropriate sf geometry
+        
+        ggplot() +
+            geom_sf(data = tab_data[['data_map']], aes_string(fill = tab_data[['col_value']])) +
+            scale_fill_viridis_c(name = tab_data[['scale_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity')) +
+            plot_theme
+            
     })
 }
 
