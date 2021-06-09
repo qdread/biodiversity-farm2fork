@@ -11,7 +11,10 @@ load('data/all_app_data.RData')
 
 # For each dataset, subset the baseline out, rename the columns, and remove scenario columns
 # Then join baseline back to the data
+# In the same function, convert scenario_diet and scenario_waste to ordered factors for plotting.
 get_baseline <- function(dat) {
+    dat[, scenario_diet := factor(scenario_diet, levels = c('baseline', 'usstyle', 'medstyle', 'vegetarian', 'planetaryhealth'))]
+    dat[, scenario_waste := factor(scenario_waste, levels = c('baseline', 'allavoidable'))]
     dat_base <- dat[scenario_diet == 'baseline' & scenario_waste == 'baseline']
     dat_base[, c('scenario_diet', 'scenario_waste') := NULL]
     flow_cols <- grep('flow', names(dat_base), value = TRUE)
@@ -38,6 +41,8 @@ taxa_options <- c('plants', 'amphibians', 'birds', 'mammals', 'reptiles')
 plot_theme <- theme_bw()
 brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", 
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
+
+diet_x_labels <- c('Baseline', 'USDA\nAmerican-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
 
 # UI ----------------------------------------------------------------------
 
@@ -101,19 +106,19 @@ ui <- fluidPage(
             selectInput('goods_subcats',
                         'Which goods to display?',
                         multiple = TRUE,
-                        selected = goods_options,
+                        selected = goods_options[1],
                         goods_options
                         ),
             selectInput('land_subcats',
                         'Which land use types to display?',
                         multiple = TRUE,
-                        selected = land_options,
+                        selected = land_options[1],
                         land_options
             ), 
             selectInput('taxa_subcats',
                         'Which taxonomic groups to display?',
                         multiple = TRUE,
-                        selected = taxa_options,
+                        selected = taxa_options[1],
                         taxa_options
             )
         ),
@@ -146,20 +151,28 @@ server <- function(input, output) {
         # Subset rows based on selected subcategories.
         # Calculate sum of flows by scenarios, summing across all selected subcategories.
         if (flow_type == 'goods') {
+            # FIXME Inbound foreign goods will be in units of tonnes.
+            
             dat_plot <- county_goods_flow_sums
             fill_var <- 'ag_good_short_name'
+            scale_name <- 'Agricultural goods category'
+            y_name <- 'Agricultural goods flow (million USD)'
             dat_plot <- dat_plot[BEA_code %in% input[['goods_subcats']], 
                                  lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
         }
         if (flow_type == 'land') {
             dat_plot <- county_land_flow_sums
             fill_var <- 'land_type'
+            scale_name <- 'Land use category'
+            y_name <- parse(text = 'Land~flow~(km^2)')
             dat_plot <- dat_plot[land_type %in% input[['land_subcats']], 
                                  lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
         }
         if (flow_type == 'biodiv') {
             dat_plot <- county_extinction_flow_sums
             fill_var <- 'taxon'
+            scale_name <- 'Taxonomic group'
+            y_name <- 'Biodiversity threat flow (potential extinctions)'
             dat_plot <- dat_plot[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
                                  lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
         }
@@ -173,10 +186,14 @@ server <- function(input, output) {
         # FIXME a summed geom_col for the total of all categories selected.
         
         # FIXME the log scale is not good for geom_col because there is no bottom of the bar. Maybe use point?
-        ggplot(dat_plot, aes_string(x = 'scenario', y = col_value, fill = fill_var)) +
+        
+        ggplot(dat_plot, aes_string(x = 'scenario_diet', y = col_value, fill = fill_var)) +
+            facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
+                                                                                          'allavoidable' = '50% food waste reduction'))) +
             geom_col(position = 'dodge') +
-            scale_fn(expand = expansion(mult = c(0, 0.02))) +
-            scale_fill_manual(values = brewer_cols)
+            scale_fn(name = y_name, expand = expansion(mult = c(0, 0.02))) +
+            scale_fill_manual(name = scale_name, values = brewer_cols) +
+            scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels)
         
     })
     
