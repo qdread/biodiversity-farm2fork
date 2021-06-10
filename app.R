@@ -3,6 +3,7 @@ library(data.table)
 library(sf)
 library(ggplot2)
 library(gt)
+library(gridExtra)
 
 # FIXME In general, can this all be sped up by running portions of code only when needed? i.e. make more reactive? Not sure.
 
@@ -51,10 +52,18 @@ names(land_options) <- c('Annual cropland', 'Permanent cropland', 'Pastureland')
 # gg stuff
 plot_theme <- theme_bw() +
     theme(strip.background = element_blank())
+map_theme <- plot_theme +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())
 brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", 
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
 
 diet_x_labels <- c('Baseline', 'USDA\nAmerican-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
+
+# CRS for AK and HI
+ak_crs <- '+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
+hi_crs <- '+proj=aea +lat_1=8 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
+# Bounding box set manually to get rid of minor outlying islands
+hi_box <- c(xmin = -400000, ymin = 1761000, xmax = 230000, ymax = 2130000)
 
 # UI ----------------------------------------------------------------------
 
@@ -228,11 +237,11 @@ server <- function(input, output) {
        tab_data <- prepare_data(input)
        tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
        gt(tab_data[['data']]) %>%
-           cols_label(scenario_diet = 'Diet scenario',
-                      scenario_waste = 'Waste scenario')
+           cols_label(.list = as.list(c('Category', 'Diet scenario', 'Waste scenario', 'Flow')) %>% setNames(names(tab_data[['data']])))  %>%
+           data_color(tab_data[['col_value']], 'Reds')
        
-       # FIXME Improve column labels
-       # FIXME Add color shading to the value column
+       # FIXME Improve column labels (more informative label for Category and include units on Flow)
+       # FIXME Any improvements to formatting possible?
        
        # FIXME right now it's the summed up data but maybe we can also show data by county or country?
        # FIXME Also it might be neat to allow the user to subset the data by county or country in the table, and/or sort it
@@ -241,13 +250,37 @@ server <- function(input, output) {
     output$map <- renderPlot({
         tab_data <- prepare_data(input)
         
-        # FIXME Here, join the map data with the appropriate sf geometry
+        tab_data[['data_map']] <- merge(county_map, tab_data[['data_map']], by = 'county')
+        # FIXME Currently this is only the USA map but later we would need to add in the foreign map for those cases where it's needed
+
+        # Get scale to be used across all three maps
+        vals <- tab_data[['data_map']][[tab_data[['col_value']]]]
+        if (input[['log_scale']]) vals <- vals[vals > 0]
+        scale_range <- range(vals, na.rm = TRUE)
         
-        ggplot() +
-            geom_sf(data = tab_data[['data_map']], aes_string(fill = tab_data[['col_value']])) +
-            scale_fill_viridis_c(name = tab_data[['scale_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity')) +
-            plot_theme
-            
+        p48 <- ggplot() +
+            geom_sf(data = subset(tab_data[['data_map']], !fips_state %in% c('02', '15')), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            map_theme +
+            theme(legend.position = 'top')
+        
+        pak <- ggplot() +
+            geom_sf(data = subset(tab_data[['data_map']], fips_state %in% '02'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            coord_sf(crs = ak_crs) +
+            map_theme +
+            theme(legend.position = 'none')
+        
+        phi <- ggplot() +
+            geom_sf(data = subset(tab_data[['data_map']], fips_state %in% '15'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            coord_sf(crs = hi_crs, xlim = hi_box[c('xmin','xmax')], ylim = hi_box[c('ymin','ymax')]) +
+            map_theme +
+            theme(legend.position = 'none')
+        
+        # FIXME This layout was done very lazily and needs to be cleaned up. Align panels better and make L48 map bigger and insets smaller.
+        grid.arrange(p48, pak, phi, layout_matrix = rbind(c(1,1), c(2,3)), heights = c(2, 1))
+        
     })
 }
 
