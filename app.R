@@ -5,6 +5,9 @@ library(ggplot2)
 library(gt)
 library(gridExtra)
 
+# FIXME Somewhere in the main output tab, there should be some text summarizing what is being displayed on the plot, table, or map
+# FIXME so that people do not have to scroll down through all the options to remind themselves what's on the map
+
 # FIXME In general, can this all be sped up by running portions of code only when needed? i.e. make more reactive? Not sure.
 
 # Initial processing ------------------------------------------------------
@@ -204,8 +207,12 @@ prepare_data <- function(input) {
     }
     
     # Normalize value by baseline if selected
-    if (input[['normalize']]) set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
-    
+    if (input[['normalize']]) {
+        set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
+        set(dat_map, j = col_value, value = dat_map[[col_value]]/dat_map[[col_baseline]])
+        y_name <- 'Flow relative to baseline scenario'
+    }
+        
     return(list(data = dat_plot, data_map = dat_map, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
 }
 
@@ -259,29 +266,37 @@ server <- function(input, output) {
         if (input[['log_scale']]) vals <- vals[vals > 0]
         scale_range <- range(vals, na.rm = TRUE)
         
+        # Use color scale depending on whether divergent or sequential is needed
+        # FIXME Set so that the divergent scale is centered at 1. See code from the virtualland package to fix.
+        if (input[['normalize']]) {
+            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik')
+        } else {
+            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range)
+        }
+
         p48 <- ggplot() +
             geom_sf(data = subset(tab_data[['data_map']], !fips_state %in% c('02', '15')), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            color_scale +
             map_theme +
-            theme(legend.position = 'top')
+            theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
         
         pak <- ggplot() +
             geom_sf(data = subset(tab_data[['data_map']], fips_state %in% '02'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            color_scale +
             coord_sf(crs = ak_crs) +
             map_theme +
             theme(legend.position = 'none')
         
         phi <- ggplot() +
             geom_sf(data = subset(tab_data[['data_map']], fips_state %in% '15'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-            scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range) +
+            color_scale +
             coord_sf(crs = hi_crs, xlim = hi_box[c('xmin','xmax')], ylim = hi_box[c('ymin','ymax')]) +
             map_theme +
             theme(legend.position = 'none')
         
         # FIXME This layout was done very lazily and needs to be cleaned up. Align panels better and make L48 map bigger and insets smaller.
-        grid.arrange(p48, pak, phi, layout_matrix = rbind(c(1,1), c(2,3)), heights = c(2, 1))
-        
+        #grid.arrange(p48, pak, phi, layout_matrix = rbind(c(1,1), c(2,3)), heights = c(3, 1))
+        grid.arrange(p48, pak, phi, layout_matrix = cbind(c(NA, 2, 3), c(1, 1, 1)), widths = c(1, 4))
     })
 }
 
