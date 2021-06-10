@@ -238,7 +238,8 @@ server <- function(input, output) {
        tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
        gt(tab_data[['data']]) %>%
            cols_label(.list = as.list(c('Category', 'Diet scenario', 'Waste scenario', 'Flow')) %>% setNames(names(tab_data[['data']])))  %>%
-           data_color(tab_data[['col_value']], 'Reds')
+           data_color(tab_data[['col_value']], 'Reds') %>%
+           fmt_number(columns = 4, n_sigfig = 3)
        
        # FIXME Improve column labels (more informative label for Category and include units on Flow)
        # FIXME Any improvements to formatting possible?
