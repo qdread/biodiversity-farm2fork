@@ -55,6 +55,66 @@ hi_crs <- '+proj=aea +lat_1=8 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellp
 # Bounding box set manually to get rid of minor outlying islands
 hi_box <- c(xmin = -400000, ymin = 1761000, xmax = 230000, ymax = 2130000)
 
+
+# Data preparation function -----------------------------------------------
+
+# This function is called within each of the three tabs to return data to be plotted
+prepare_data <- function(input) {
+    scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
+    flow_type <- input[['flow_type']]
+    
+    # Define column name to plot, depending on flow direction and flow origin
+    col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
+    col_baseline <- paste(col_value, 'baseline', sep = '_')
+    
+    # Select data frame to plot.
+    # Subset rows based on selected subcategories.
+    # Calculate sum of flows by scenarios, summing across all selected subcategories.
+    if (flow_type == 'goods') {
+        # FIXME Inbound foreign goods will be in units of tonnes.
+        
+        dat <- copy(county_goods_flow_sums)
+        fill_var <- 'ag_good_short_name'
+        scale_name <- 'Agricultural goods category'
+        y_name <- 'Agricultural goods flow (million USD)'
+        dat_plot <- dat[BEA_code %in% input[['goods_subcats']], 
+                        lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[BEA_code %in% input[['goods_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    if (flow_type == 'land') {
+        dat <- copy(county_land_flow_sums)
+        fill_var <- 'land_type'
+        scale_name <- 'Land use category'
+        y_name <- parse(text = 'Land~flow~(km^2)')
+        dat_plot <- dat[land_type %in% input[['land_subcats']], 
+                        lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    if (flow_type == 'biodiv') {
+        dat <- copy(county_extinction_flow_sums)
+        fill_var <- 'taxon'
+        scale_name <- 'Taxonomic group'
+        y_name <- 'Biodiversity threat flow (potential extinctions)'
+        dat_plot <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
+                        lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    # Normalize value by baseline if selected
+    if (input[['normalize']]) {
+        set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
+        set(dat_map, j = col_value, value = dat_map[[col_value]]/dat_map[[col_baseline]])
+        y_name <- 'Flow relative to baseline scenario'
+    }
+    
+    return(list(data = dat_plot, data_map = dat_map, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
+}
+
 # UI ----------------------------------------------------------------------
 
 ui <- fluidPage(
