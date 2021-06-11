@@ -48,6 +48,8 @@ brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
 
 diet_x_labels <- c('Baseline', 'USDA\nAmerican-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
+diet_long_names <- c('baseline', 'USDA American-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
+waste_long_names <- c('baseline', '50% waste reduction')
 
 # CRS for AK and HI
 ak_crs <- '+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
@@ -56,64 +58,6 @@ hi_crs <- '+proj=aea +lat_1=8 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellp
 hi_box <- c(xmin = -400000, ymin = 1761000, xmax = 230000, ymax = 2130000)
 
 
-# Data preparation function -----------------------------------------------
-
-# This function is called within each of the three tabs to return data to be plotted
-prepare_data <- function(input) {
-    scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
-    flow_type <- input[['flow_type']]
-    
-    # Define column name to plot, depending on flow direction and flow origin
-    col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
-    col_baseline <- paste(col_value, 'baseline', sep = '_')
-    
-    # Select data frame to plot.
-    # Subset rows based on selected subcategories.
-    # Calculate sum of flows by scenarios, summing across all selected subcategories.
-    if (flow_type == 'goods') {
-        # FIXME Inbound foreign goods will be in units of tonnes.
-        
-        dat <- copy(county_goods_flow_sums)
-        fill_var <- 'ag_good_short_name'
-        scale_name <- 'Agricultural goods category'
-        y_name <- 'Agricultural goods flow (million USD)'
-        dat_plot <- dat[BEA_code %in% input[['goods_subcats']], 
-                        lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        dat_map <- dat[BEA_code %in% input[['goods_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
-                       lapply(.SD, sum), by = .(county, ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-    }
-    
-    if (flow_type == 'land') {
-        dat <- copy(county_land_flow_sums)
-        fill_var <- 'land_type'
-        scale_name <- 'Land use category'
-        y_name <- parse(text = 'Land~flow~(km^2)')
-        dat_plot <- dat[land_type %in% input[['land_subcats']], 
-                        lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        dat_map <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
-                       lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-    }
-    
-    if (flow_type == 'biodiv') {
-        dat <- copy(county_extinction_flow_sums)
-        fill_var <- 'taxon'
-        scale_name <- 'Taxonomic group'
-        y_name <- 'Biodiversity threat flow (potential extinctions)'
-        dat_plot <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
-                        lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-        dat_map <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
-                       lapply(.SD, sum), by = .(county, taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
-    }
-    
-    # Normalize value by baseline if selected
-    if (input[['normalize']]) {
-        set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
-        set(dat_map, j = col_value, value = dat_map[[col_value]]/dat_map[[col_baseline]])
-        y_name <- 'Flow relative to baseline scenario'
-    }
-    
-    return(list(data = dat_plot, data_map = dat_map, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
-}
 
 # UI ----------------------------------------------------------------------
 
@@ -205,6 +149,69 @@ ui <- fluidPage(
     )
 )
 
+# Data preparation function -----------------------------------------------
+
+# FIXME If I move the definition of this function to another script, it returns error that the objects can't be found in the namespace.
+# FIXME Why the hell should that make any difference? The function is still CALLED in the same place, it's just defined in a different file.
+
+# This function is called within each of the three tabs to return data to be plotted
+prepare_data <- function(input) {
+    scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
+    flow_type <- input[['flow_type']]
+    
+    # Define column name to plot, depending on flow direction and flow origin
+    col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
+    col_baseline <- paste(col_value, 'baseline', sep = '_')
+    
+    # Select data frame to plot.
+    # Subset rows based on selected subcategories.
+    # Calculate sum of flows by scenarios, summing across all selected subcategories.
+    if (flow_type == 'goods') {
+        # FIXME Inbound foreign goods will be in units of tonnes.
+        
+        dat <- copy(county_goods_flow_sums)
+        fill_var <- 'ag_good_short_name'
+        scale_name <- 'Agricultural goods category'
+        y_name <- 'Agricultural goods flow (million USD)'
+        dat_plot <- dat[BEA_code %in% input[['goods_subcats']], 
+                        lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[BEA_code %in% input[['goods_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    if (flow_type == 'land') {
+        dat <- copy(county_land_flow_sums)
+        fill_var <- 'land_type'
+        scale_name <- 'Land use category'
+        y_name <- parse(text = 'Land~flow~(km^2)')
+        dat_plot <- dat[land_type %in% input[['land_subcats']], 
+                        lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    if (flow_type == 'biodiv') {
+        dat <- copy(county_extinction_flow_sums)
+        fill_var <- 'taxon'
+        scale_name <- 'Taxonomic group'
+        y_name <- 'Biodiversity threat flow (potential extinctions)'
+        dat_plot <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
+                        lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+        dat_map <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
+                       lapply(.SD, sum), by = .(county, taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
+    }
+    
+    # Normalize value by baseline if selected
+    if (input[['normalize']]) {
+        set(dat_plot, j = col_value, value = dat_plot[[col_value]]/dat_plot[[col_baseline]])
+        set(dat_map, j = col_value, value = dat_map[[col_value]]/dat_map[[col_baseline]])
+        y_name <- 'Flow relative to baseline scenario'
+    }
+    
+    return(list(data = dat_plot, data_map = dat_map, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
+}
+
+
 # Server function (render plots and maps) ---------------------------------
 
 server <- function(input, output) {
@@ -231,12 +238,32 @@ server <- function(input, output) {
     output$table <- render_gt({
        tab_data <- prepare_data(input)
        tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
-       gt(tab_data[['data']]) %>%
-           cols_label(.list = as.list(c('Category', 'Diet scenario', 'Waste scenario', 'Flow')) %>% setNames(names(tab_data[['data']])))  %>%
-           data_color(tab_data[['col_value']], 'Reds') %>%
+       
+       # Use long names for diet and waste scenarios in table.
+       tab_data[['data']][, scenario_diet := factor(scenario_diet, labels = diet_long_names)]
+       tab_data[['data']][, scenario_waste := factor(scenario_waste, labels = waste_long_names)]
+
+       flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', 'Flow')
+       
+       # If scale is divergent, create a palette centered at no change (0 or 1)
+       if (input[['normalize']]) {
+           # FIXME Uncomment the below line if we want to center at zero, then change to center=0
+           # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
+           # Remap scale range so that it is centered at 1.
+           fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 1)
+           color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2])
+       } else {
+           color_palette <- 'Reds'
+       }
+       
+       gt(tab_data[['data']][order(scenario_diet, scenario_waste)]) %>%
+           cols_label(.list = as.list(c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name)) %>% setNames(names(tab_data[['data']]))) %>%
+           data_color(tab_data[['col_value']], colors = color_palette, alpha = 0.75) %>%
            fmt_number(columns = 4, n_sigfig = 3)
        
-       # FIXME Improve column labels (more informative label for Category and include units on Flow)
+       # FIXME Change the color palette to something divergent, centered at no change (0 or 1), if normalized input is selected.
+       
+       # FIXME Improve column labels (include units on Flow)
        # FIXME Any improvements to formatting possible?
        
        # FIXME right now it's the summed up data but maybe we can also show data by county or country?
