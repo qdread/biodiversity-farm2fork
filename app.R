@@ -1,3 +1,5 @@
+# For issues that need fixing please see github.com/qdread/biodiversity-farm2fork/issues
+
 library(shiny)
 library(data.table)
 library(sf)
@@ -5,18 +7,7 @@ library(ggplot2)
 library(gt)
 library(gridExtra)
 
-# FIXME Somewhere in the main output tab, there should be some text summarizing what is being displayed on the plot, table, or map
-# FIXME so that people do not have to scroll down through all the options to remind themselves what's on the map
-
-# FIXME In general, can this all be sped up by running portions of code only when needed? i.e. make more reactive? Not sure.
-
-# FIXME Another general fix: instead of returning errors for invalid combinations of input, either return an informative message
-# FIXME or better yet, "gray out" invalid possibilities so that users can't select something invalid.
-
-# FIXME Could consider different layouts, for example a "dashboard" style layout with multiple panels for plot, table, and map, instead of tabs.
-
-# FIXME There are some bugs in this, possibly related to data.table modifying by reference... sometimes you get a different result if
-# FIXME you select the same display options in a different order.
+shinyOptions(cache = cachem::cache_mem(max_size = 20e6)) # Set cache size to approx 20 MB.
 
 # Initial processing ------------------------------------------------------
 
@@ -42,16 +33,20 @@ goods_options <- setNames(bea_lookup[['BEA_code']][1:10], bea_lookup[['ag_good_s
 land_options <- c('annual', 'permanent', 'pasture')
 names(land_options) <- c('Annual cropland', 'Permanent cropland', 'Pastureland')
 
+# Names of input variables to be used for cache key expression
+input_vars <- c('flow_type', 'flow_origin', 'flow_direction', 'scenario_diet', 'scenario_waste', 'normalize', 'log_scale', 'map_type', 'goods_subcats', 'land_subcats', 'taxa_subcats')
+
 # gg stuff
 plot_theme <- theme_bw() +
-    theme(strip.background = element_blank())
+    theme(strip.background = element_blank(),
+          legend.position = 'bottom')
 map_theme <- plot_theme +
     theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())
 brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", 
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
 
-diet_x_labels <- c('Baseline', 'USDA\nAmerican-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
-diet_long_names <- c('baseline', 'USDA American-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
+diet_x_labels <- c('Baseline', 'USDA\nU.S.-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
+diet_long_names <- c('baseline', 'USDA U.S.-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
 waste_long_names <- c('baseline', '50% waste reduction')
 
 # CRS for AK and HI
@@ -94,7 +89,7 @@ ui <- fluidPage(
             selectInput('scenario_diet',
                         'Diet shift scenario (for map only)',
                         c('Baseline diet' = 'baseline',
-                          'USDA American-style' = 'usstyle',
+                          'USDA U.S.-style' = 'usstyle',
                           'USDA Mediterranean-style' = 'medstyle',
                           'USDA vegetarian' = 'vegetarian',
                           'EAT-Lancet Planetary Health' = 'planetaryhealth')),
@@ -248,7 +243,7 @@ prepare_data <- function(input, tab_id) {
 
 server <- function(input, output) {
     
-    output$plot <- renderPlot({
+    output$plot <- renderCachedPlot({
         tab_data <- prepare_data(input, tab_id = 'plot')
         
         # FIXME Possibly include two plots: a dodged or stacked geom_col so you can see each one separately, and 
@@ -265,7 +260,8 @@ server <- function(input, output) {
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
             plot_theme
         
-    })
+    },
+    cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
     
     output$table <- render_gt({
        tab_data <- prepare_data(input, tab_id = 'table')
@@ -300,7 +296,7 @@ server <- function(input, output) {
        # FIXME Also it might be neat to allow the user to subset the data by county or country in the table, and/or sort it
     })
     
-    output$map <- renderPlot({
+    output$map <- renderCachedPlot({
         
         tab_data <- prepare_data(input, tab_id = 'map')
         
@@ -362,7 +358,8 @@ server <- function(input, output) {
             #grid.arrange(p48, pak, phi, layout_matrix = rbind(c(1,1), c(2,3)), heights = c(3, 1))
             grid.arrange(p48, pak, phi, layout_matrix = cbind(c(NA, 2, 3), c(1, 1, 1)), widths = c(1, 4))
         }
-    })
+    },
+    cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
 }
 
 shinyApp(ui = ui, server = server)
