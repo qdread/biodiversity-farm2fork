@@ -63,9 +63,6 @@ ui <- fluidPage(
 
     # Application title
     titlePanel('Biodiversity: Farm to Fork'),
-    
-    # FIXME it might also be nice to have the ability to crosstabulate different variables or display more than one,
-    # FIXME instead of stacking within a single variable.
 
     # Sidebar with options
     sidebarLayout(
@@ -148,9 +145,6 @@ ui <- fluidPage(
 )
 
 # Data preparation function -----------------------------------------------
-
-# FIXME If I move the definition of this function to another script, it returns error that the objects can't be found in the namespace.
-# FIXME Why the hell should that make any difference? The function is still CALLED in the same place, it's just defined in a different file.
 
 # This function is called within each of the three tabs to return data to be plotted
 prepare_data <- function(input, tab_id) {
@@ -270,8 +264,10 @@ server <- function(input, output) {
        # Use long names for diet and waste scenarios in table.
        tab_data[['data']][, scenario_diet := factor(scenario_diet, labels = diet_long_names)]
        tab_data[['data']][, scenario_waste := factor(scenario_waste, labels = waste_long_names)]
+       
+       flow_units <- switch(input[['flow_type']], land = '(hectares)', goods = '(million USD)', biodiv = '(potential extinctions)')
 
-       flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', 'Flow')
+       flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', paste('Flow', flow_units))
        
        # If scale is divergent, create a palette centered at no change (0 or 1)
        if (input[['normalize']]) {
@@ -288,14 +284,8 @@ server <- function(input, output) {
            cols_label(.list = as.list(c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name)) %>% setNames(names(tab_data[['data']]))) %>%
            data_color(tab_data[['col_value']], colors = color_palette, alpha = 0.75) %>%
            fmt_number(columns = 4, n_sigfig = 3)
-       
-       # FIXME Improve column labels (include units on Flow)
-       # FIXME Any improvements to formatting possible?
-       
-       # FIXME right now it's the summed up data but maybe we can also show data by county or country?
-       # FIXME Also it might be neat to allow the user to subset the data by county or country in the table, and/or sort it
     })
-    
+
     output$map <- renderCachedPlot({
         
         tab_data <- prepare_data(input, tab_id = 'map')
