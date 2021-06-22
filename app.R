@@ -45,9 +45,9 @@ map_theme <- plot_theme +
 brewer_cols <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", 
                  "#A6761D", "#666666", "#E41A1C", "#377EB8")
 
-diet_x_labels <- c('Baseline', 'USDA\nU.S.-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
-diet_long_names <- c('baseline', 'USDA U.S.-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
-waste_long_names <- c('baseline', '50% waste reduction')
+diet_x_labels <- c('Baseline\ndiet', 'USDA\nU.S.-style', 'USDA\nMed.-style', 'USDA\nvegetarian', 'Planetary\nHealth')
+diet_long_names <- c('baseline diet', 'USDA U.S.-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
+waste_long_names <- c('baseline food waste', '50% waste reduction')
 
 # CRS for AK and HI
 ak_crs <- '+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
@@ -69,6 +69,7 @@ ui <- fluidPage(
         sidebarPanel(
             radioButtons('flow_type',
                          'Flow type',
+                         selected = 'land',
                          c('Agricultural goods' = 'goods',
                            'Virtual land transfers' = 'land',
                            'Virtual biodiversity threat transfers' = 'biodiv')),
@@ -110,9 +111,8 @@ ui <- fluidPage(
                          'Which map to display?',
                          c('USA by county' = 'usa',
                            'World by country' = 'world')),
-            # FIXME The following input options should only appear at all if the corresponding flow_type is selected.
-            # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one.
-            # FIXME And if nothing is selected, a sensible error will display on plot or map like "select at least one of whatever"
+            # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
+            # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
             selectInput('goods_subcats',
                         'Which goods to display?',
                         multiple = TRUE,
@@ -122,13 +122,13 @@ ui <- fluidPage(
             selectInput('land_subcats',
                         'Which land use types to display?',
                         multiple = TRUE,
-                        selected = land_options[1],
+                        selected = land_options,
                         land_options
             ), 
             selectInput('taxa_subcats',
                         'Which taxonomic groups to display?',
                         multiple = TRUE,
-                        selected = taxa_options[1],
+                        selected = taxa_options,
                         taxa_options
             )
         ),
@@ -149,6 +149,7 @@ ui <- fluidPage(
 # This function is called within each of the three tabs to return data to be plotted
 prepare_data <- function(input, tab_id) {
     scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
+    scale_label_fn <- ifelse(input[['normalize']], scales::label_percent, scales::label_comma)
     flow_type <- input[['flow_type']]
     
     # Define column name to plot, depending on flow direction and flow origin
@@ -194,6 +195,9 @@ prepare_data <- function(input, tab_id) {
                 dat <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
                            lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
             } else {
+                # Hardcode value column names for world map.
+                col_value <- 'flow_outbound_foreign'
+                col_baseline <- 'flow_outbound_foreign_baseline'
                 dat <- copy(foreign_land_flow_sums)
                 dat <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
                            lapply(.SD, sum), by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
@@ -216,6 +220,9 @@ prepare_data <- function(input, tab_id) {
                 dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
                            lapply(.SD, sum), by = .(county, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
             } else {
+                # Hardcode value column names for world map.
+                col_value <- 'flow_outbound_foreign'
+                col_baseline <- 'flow_outbound_foreign_baseline'
                 dat <- copy(foreign_extinction_flow_sums)
                 dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
                            lapply(.SD, sum, by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline))]
@@ -229,27 +236,46 @@ prepare_data <- function(input, tab_id) {
         y_name <- 'Flow relative to baseline scenario'
     }
     
-    return(list(data = dat, scale_fn = scale_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
+    return(list(data = dat, scale_fn = scale_fn, scale_label_fn = scale_label_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
 }
 
+
+# Function to check validity of combinations ------------------------------
+
+is_valid_combo <- function(input) {
+    any(c(
+        input[['flow_type']] == 'goods' & length(input[['goods_subcats']]) > 0,
+        input[['flow_type']] == 'land' & length(input[['land_subcats']]) > 0,
+        input[['flow_type']] == 'biodiv' & length(input[['taxa_subcats']]) > 0 & length(input[['land_subcats']]) > 0
+    ))
+    
+}
+
+valid_combo_msg <- function(input) {
+    x <- switch(input[['flow_type']],
+           'land' = 'land use types.',
+           'goods' = 'agricultural goods.',
+           'biodiv' = 'taxonomic groups and one of the land use types.')
+    paste('Please select at least one of the', x)
+}
 
 # Server function (render plots and maps) ---------------------------------
 
 server <- function(input, output) {
     
     output$plot <- renderCachedPlot({
+        validate(need(is_valid_combo(input), valid_combo_msg(input)))
+        
         tab_data <- prepare_data(input, tab_id = 'plot')
         
         # FIXME Possibly include two plots: a dodged or stacked geom_col so you can see each one separately, and 
         # FIXME a summed geom_col for the total of all categories selected.
         
-        # FIXME the log scale is not good for geom_col because there is no bottom of the bar. Maybe use point?
-        
         ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']])) +
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
             geom_col(position = 'dodge') +
-            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02))) +
+            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02)), labels = tab_data[['scale_label_fn']]()) +
             scale_fill_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
             plot_theme
@@ -258,35 +284,46 @@ server <- function(input, output) {
     cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
     
     output$table <- render_gt({
-       tab_data <- prepare_data(input, tab_id = 'table')
-       tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
-       
-       # Use long names for diet and waste scenarios in table.
-       tab_data[['data']][, scenario_diet := factor(scenario_diet, labels = diet_long_names)]
-       tab_data[['data']][, scenario_waste := factor(scenario_waste, labels = waste_long_names)]
-       
-       flow_units <- switch(input[['flow_type']], land = '(hectares)', goods = '(million USD)', biodiv = '(potential extinctions)')
-
-       flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', paste('Flow', flow_units))
-       
-       # If scale is divergent, create a palette centered at no change (0 or 1)
-       if (input[['normalize']]) {
-           # FIXME Uncomment the below line if we want to center at zero, then change to center=0
-           # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
-           # Remap scale range so that it is centered at 1.
-           fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 1)
-           color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2])
-       } else {
-           color_palette <- 'Reds'
-       }
-       
-       gt(tab_data[['data']][order(scenario_diet, scenario_waste)]) %>%
-           cols_label(.list = as.list(c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name)) %>% setNames(names(tab_data[['data']]))) %>%
-           data_color(tab_data[['col_value']], colors = color_palette, alpha = 0.75) %>%
-           fmt_number(columns = 4, n_sigfig = 3)
+        validate(need(is_valid_combo(input), valid_combo_msg(input)))
+        
+        tab_data <- prepare_data(input, tab_id = 'table')
+        tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
+        
+        # Use long names for diet and waste scenarios in table.
+        tab_data[['data']][, scenario_diet := factor(scenario_diet, labels = diet_long_names)]
+        tab_data[['data']][, scenario_waste := factor(scenario_waste, labels = waste_long_names)]
+        
+        flow_units <- switch(input[['flow_type']], land = '(hectares)', goods = '(million USD)', biodiv = '(potential extinctions)')
+        
+        flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', paste('Flow', flow_units))
+        
+        # If scale is divergent, create a palette centered at no change (0 or 1)
+        if (input[['normalize']]) {
+            # FIXME Uncomment the below line if we want to center at zero, then change to center=0
+            # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
+            # Remap scale range so that it is centered at 1.
+            fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 1)
+            color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2])
+        } else {
+            color_palette <- 'Reds'
+        }
+        
+        gt(tab_data[['data']][order(scenario_diet, scenario_waste)]) %>%
+            cols_label(.list = as.list(c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name)) %>% setNames(names(tab_data[['data']]))) %>%
+            data_color(tab_data[['col_value']], colors = color_palette, alpha = 0.75) %>%
+            fmt_number(columns = 4, n_sigfig = 3) %>%
+            fmt_percent(columns = ifelse(input[['normalize']], 4, 0), decimals = 1, drop_trailing_zeros = TRUE)
     })
 
     output$map <- renderCachedPlot({
+        
+        validate(
+            need(is_valid_combo(input), valid_combo_msg(input)),
+            need(!(input[['map_type']] == 'world' & input[['flow_direction']] == 'inbound'),
+                 'Only outbound flows (production) can be shown for foreign countries.'),
+            need(!(input[['map_type']] == 'world' & input[['flow_type']] == 'goods'),
+                 'Currently, only outbound land and biodiversity flows can be shown for foreign countries.')
+        )
         
         tab_data <- prepare_data(input, tab_id = 'map')
         
@@ -301,25 +338,21 @@ server <- function(input, output) {
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(vals, center = 1)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2])
+            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']]())
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range)
+            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']]())
         }
         
         if (input[['map_type']] == 'world') {
-            if (input[['flow_origin']] == 'inbound') {
-                # FIXME Here return an informative message that only production can be shown for foreign countries.
-            } else {
-
-                tab_data[['data']] <- merge(global_country_map, tab_data[['data']], by = 'ISO_A3', all.x = TRUE)
-                
-                ggplot() +
-                    geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-                    color_scale +
-                    map_theme +
-                    theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
-
-            }
+            
+            tab_data[['data']] <- merge(global_country_map, tab_data[['data']], by = 'ISO_A3', all.x = TRUE)
+            
+            ggplot() +
+                geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+                color_scale +
+                map_theme +
+                theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
+            
         } else {
             
             tab_data[['data']] <- merge(county_map, tab_data[['data']], by = 'county', all.x = TRUE)
