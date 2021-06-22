@@ -268,15 +268,15 @@ server <- function(input, output) {
         
         tab_data <- prepare_data(input, tab_id = 'plot')
         
-        # FIXME Possibly include two plots: a dodged or stacked geom_col so you can see each one separately, and 
-        # FIXME a summed geom_col for the total of all categories selected.
-        
-        ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']])) +
+        plot_geom <- if(input[['log_scale']]) geom_point(size = 3, position = position_dodge(width = 0.1)) else geom_col(position = 'dodge')
+
+        ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']], color = tab_data[['fill_var']])) +
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
-            geom_col(position = 'dodge') +
+            plot_geom +
             tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02)), labels = tab_data[['scale_label_fn']]()) +
             scale_fill_manual(name = tab_data[['scale_name']], values = brewer_cols) +
+            scale_color_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
             plot_theme
         
