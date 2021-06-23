@@ -5,7 +5,6 @@ library(data.table)
 library(sf)
 library(ggplot2)
 library(gt)
-library(cowplot)
 
 shinyOptions(cache = cachem::cache_mem(max_size = 20e6)) # Set cache size to approx 20 MB.
 
