@@ -225,7 +225,7 @@ prepare_data <- function(input, tab_id) {
                 col_baseline <- 'flow_outbound_foreign_baseline'
                 dat <- copy(foreign_extinction_flow_sums)
                 dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
-                           lapply(.SD, sum, by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline))]
+                           lapply(.SD, sum), by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
             }
         }
     }
@@ -322,7 +322,7 @@ server <- function(input, output) {
             need(!(input[['map_type']] == 'world' & input[['flow_direction']] == 'inbound'),
                  'Only outbound flows (production) can be shown for foreign countries.'),
             need(!(input[['map_type']] == 'world' & input[['flow_type']] == 'goods'),
-                 'Currently, only outbound land and biodiversity flows can be shown for foreign countries.')
+                 'Only land and biodiversity flows can be shown for foreign countries.')
         )
         
         tab_data <- prepare_data(input, tab_id = 'map')
