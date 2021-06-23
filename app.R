@@ -274,7 +274,7 @@ server <- function(input, output) {
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
             plot_geom +
-            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02)), labels = tab_data[['scale_label_fn']]()) +
+            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02)), labels = tab_data[['scale_label_fn']](drop0trailing = TRUE)) +
             scale_fill_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_color_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
@@ -338,9 +338,9 @@ server <- function(input, output) {
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(vals, center = 1)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']]())
+            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']]())
+            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
         if (input[['map_type']] == 'world') {
