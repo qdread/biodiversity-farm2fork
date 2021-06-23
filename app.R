@@ -49,20 +49,6 @@ diet_x_labels <- c('Baseline\ndiet', 'USDA\nU.S.-style', 'USDA\nMed.-style', 'US
 diet_long_names <- c('baseline diet', 'USDA U.S.-style', 'USDA Mediterranean-style', 'USDA vegetarian', 'Planetary Health')
 waste_long_names <- c('baseline food waste', '50% waste reduction')
 
-# CRS for AK and HI
-ak_crs <- '+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
-hi_crs <- '+proj=aea +lat_1=8 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellps=WGS84 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs'
-# Bounding box set manually to get rid of minor outlying islands
-hi_box <- c(xmin = -400000, ymin = 1761000, xmax = 230000, ymax = 2130000)
-
-# Position and size of AK and HI
-ak_pos = c(0.02, 0.06)
-hi_pos = c(0.24, 0.06)
-ak_ratio = 0.58
-ak_size = 0.4
-hi_ratio = 0.71
-hi_size = 0.3
-
 # UI ----------------------------------------------------------------------
 
 ui <- fluidPage(
@@ -352,47 +338,16 @@ server <- function(input, output) {
         }
         
         if (input[['map_type']] == 'world') {
-            
             tab_data[['data']] <- merge(global_country_map, tab_data[['data']], by = 'ISO_A3', all.x = TRUE)
-            
-            ggplot() +
-                geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-                color_scale +
-                map_theme +
-                theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
-            
         } else {
-            
             tab_data[['data']] <- merge(county_map, tab_data[['data']], by = 'county', all.x = TRUE)
-
-            p48 <- ggplot() +
-                geom_sf(data = subset(tab_data[['data']], !fips_state %in% c('02', '15')), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-                color_scale +
-                map_theme +
-                xlim(-3.5e6, 2258201) +
-                theme(legend.position = c(0.1, 0.7), 
-                      legend.key.height = unit(1, 'cm'),
-                      legend.background = element_rect(fill = 'gray90'))
-            
-            pak <- ggplot() +
-                geom_sf(data = subset(tab_data[['data']], fips_state %in% '02'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-                color_scale +
-                coord_sf(crs = ak_crs) +
-                map_theme +
-                theme(legend.position = 'none')
-            
-            phi <- ggplot() +
-                geom_sf(data = subset(tab_data[['data']], fips_state %in% '15'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
-                color_scale +
-                coord_sf(crs = hi_crs, xlim = hi_box[c('xmin','xmax')], ylim = hi_box[c('ymin','ymax')]) +
-                map_theme +
-                theme(legend.position = 'none')
-            
-            ggdraw(p48) +
-                draw_plot(pak, width = ak_size, height = ak_size * ak_ratio, x = ak_pos[1], y = ak_pos[2], vjust = 0) +
-                draw_plot(phi, width = hi_size, height = hi_size * hi_ratio, x = hi_pos[1], y = hi_pos[2], vjust = 0)
-   
         }
+        
+        ggplot() +
+            geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            color_scale +
+            map_theme +
+            theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
     },
     cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
 }
