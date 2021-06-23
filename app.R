@@ -5,7 +5,7 @@ library(data.table)
 library(sf)
 library(ggplot2)
 library(gt)
-library(gridExtra)
+library(cowplot)
 
 shinyOptions(cache = cachem::cache_mem(max_size = 20e6)) # Set cache size to approx 20 MB.
 
@@ -55,7 +55,13 @@ hi_crs <- '+proj=aea +lat_1=8 +lat_2=18 +lat_0=3 +lon_0=-157 +x_0=0 +y_0=0 +ellp
 # Bounding box set manually to get rid of minor outlying islands
 hi_box <- c(xmin = -400000, ymin = 1761000, xmax = 230000, ymax = 2130000)
 
-
+# Position and size of AK and HI
+ak_pos = c(0.02, 0.06)
+hi_pos = c(0.24, 0.06)
+ak_ratio = 0.58
+ak_size = 0.4
+hi_ratio = 0.71
+hi_size = 0.3
 
 # UI ----------------------------------------------------------------------
 
@@ -150,8 +156,7 @@ ui <- fluidPage(
 prepare_data <- function(input, tab_id) {
     scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
     scale_label_fn <- ifelse(input[['normalize']], scales::label_percent, scales::label_comma)
-    flow_type <- input[['flow_type']]
-    
+
     # Define column name to plot, depending on flow direction and flow origin
     col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
     col_baseline <- paste(col_value, 'baseline', sep = '_')
@@ -159,12 +164,13 @@ prepare_data <- function(input, tab_id) {
     # Select data frame to plot.
     # Subset rows based on selected subcategories.
     # Calculate sum of flows by scenarios, summing across all selected subcategories.
-    if (flow_type == 'goods') {
+    if (input[['flow_type']] == 'goods') {
         # FIXME Inbound foreign goods will be in units of tonnes. Currently not supported.
         
         fill_var <- 'ag_good_short_name'
         scale_name <- 'Agricultural goods category'
         y_name <- 'Agricultural goods flow (million USD)'
+        fill_name <- 'Agricultural goods flow\n(million USD)'
         if (tab_id %in% c('plot', 'table')) {
             dat <- copy(county_goods_flow_sums)
             dat <- dat[BEA_code %in% input[['goods_subcats']], 
@@ -180,11 +186,12 @@ prepare_data <- function(input, tab_id) {
         }
     }
     
-    if (flow_type == 'land') {
+    if (input[['flow_type']] == 'land') {
         
         fill_var <- 'land_type'
         scale_name <- 'Land use category'
         y_name <- parse(text = 'Land~flow~(km^2)')
+        fill_name <- y_name
         if (tab_id %in% c('plot', 'table')) {
             dat <- copy(county_land_flow_sums)
             dat <- dat[land_type %in% input[['land_subcats']], 
@@ -205,11 +212,12 @@ prepare_data <- function(input, tab_id) {
         }
     }
     
-    if (flow_type == 'biodiv') {
+    if (input[['flow_type']] == 'biodiv') {
         
         fill_var <- 'taxon'
         scale_name <- 'Taxonomic group'
         y_name <- 'Biodiversity threat flow (potential extinctions)'
+        fill_name <- 'Biodiversity threat flow\n(potential extinctions)'
         if (tab_id %in% c('plot', 'table')) {
             dat <- copy(county_extinction_flow_sums)
             dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
@@ -225,7 +233,7 @@ prepare_data <- function(input, tab_id) {
                 col_baseline <- 'flow_outbound_foreign_baseline'
                 dat <- copy(foreign_extinction_flow_sums)
                 dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
-                           lapply(.SD, sum, by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline))]
+                           lapply(.SD, sum), by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
             }
         }
     }
@@ -236,7 +244,7 @@ prepare_data <- function(input, tab_id) {
         y_name <- 'Flow relative to baseline scenario'
     }
     
-    return(list(data = dat, scale_fn = scale_fn, scale_label_fn = scale_label_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, col_value = col_value, col_baseline = col_baseline))
+    return(list(data = dat, scale_fn = scale_fn, scale_label_fn = scale_label_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, fill_name = fill_name, col_value = col_value, col_baseline = col_baseline))
 }
 
 
@@ -322,7 +330,7 @@ server <- function(input, output) {
             need(!(input[['map_type']] == 'world' & input[['flow_direction']] == 'inbound'),
                  'Only outbound flows (production) can be shown for foreign countries.'),
             need(!(input[['map_type']] == 'world' & input[['flow_type']] == 'goods'),
-                 'Currently, only outbound land and biodiversity flows can be shown for foreign countries.')
+                 'Currently, only land and biodiversity flows can be shown for foreign countries.')
         )
         
         tab_data <- prepare_data(input, tab_id = 'map')
@@ -338,9 +346,9 @@ server <- function(input, output) {
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(vals, center = 1)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['y_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
         if (input[['map_type']] == 'world') {
@@ -361,7 +369,10 @@ server <- function(input, output) {
                 geom_sf(data = subset(tab_data[['data']], !fips_state %in% c('02', '15')), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
                 color_scale +
                 map_theme +
-                theme(legend.position = 'top', legend.key.width = unit(1.2, 'cm'))
+                xlim(-3.5e6, 2258201) +
+                theme(legend.position = c(0.1, 0.7), 
+                      legend.key.height = unit(1, 'cm'),
+                      legend.background = element_rect(fill = 'gray90'))
             
             pak <- ggplot() +
                 geom_sf(data = subset(tab_data[['data']], fips_state %in% '02'), aes_string(fill = tab_data[['col_value']]), size = 0.25) +
@@ -377,9 +388,10 @@ server <- function(input, output) {
                 map_theme +
                 theme(legend.position = 'none')
             
-            # FIXME This layout was done very lazily and needs to be cleaned up. Align panels better and make L48 map bigger and insets smaller.
-            #grid.arrange(p48, pak, phi, layout_matrix = rbind(c(1,1), c(2,3)), heights = c(3, 1))
-            grid.arrange(p48, pak, phi, layout_matrix = cbind(c(NA, 2, 3), c(1, 1, 1)), widths = c(1, 4))
+            ggdraw(p48) +
+                draw_plot(pak, width = ak_size, height = ak_size * ak_ratio, x = ak_pos[1], y = ak_pos[2], vjust = 0) +
+                draw_plot(phi, width = hi_size, height = hi_size * hi_ratio, x = hi_pos[1], y = hi_pos[2], vjust = 0)
+   
         }
     },
     cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
