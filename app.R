@@ -68,36 +68,30 @@ ui <- fluidPage(
                          'Flow direction',
                          c('Imports (consumption)' = 'inbound',
                            'Exports (production)' = 'outbound')),
-            # FIXME it would be nice if this origin option would only appear if flow direction is set to inbound
             radioButtons('flow_origin',
-                         'Flow origin (for imports only)',
+                         'Flow origin (this option only applies if imports are displayed)',
                          c('Domestic only' = 'domestic',
                            'Foreign only' = 'foreign',
                            'Total (domestic + foreign)' = 'total')),
-            # FIXME it would be nice if these map-only options would only appear if map tab is selected ( the next 2 menus)
             selectInput('scenario_diet',
-                        'Diet shift scenario (for map only)',
+                        'Diet shift scenario (this option only applies to map)',
                         c('Baseline diet' = 'baseline',
                           'USDA U.S.-style' = 'usstyle',
                           'USDA Mediterranean-style' = 'medstyle',
                           'USDA vegetarian' = 'vegetarian',
                           'EAT-Lancet Planetary Health' = 'planetaryhealth')),
             selectInput('scenario_waste',
-                        'Food waste reduction scenario (for map only)',
+                        'Food waste reduction scenario (this option only applies to map)',
                         c('Baseline food waste' = 'baseline',
                           '50% food waste reduction' = 'allavoidable')),
-            radioButtons('normalize',
-                         'Normalize values relative to baseline?',
-                         selected = FALSE,
-                         c('Yes' = TRUE,
-                           'No' = FALSE)),
+            checkboxInput('normalize',
+                          'Normalize values relative to baseline',
+                          value = FALSE),
             # FIXME it would also be nice if the log-transformation adaptively defaults to a sensible default. (though it should usually be true)
             # FIXME also the log transform is ignored for color scale on table and map, if normalize == TRUE. Maybe disable it in that case?
-            radioButtons('log_scale',
-                         'Log-transform data scale for display?',
-                         selected = TRUE,
-                         c('Yes' = TRUE,
-                           'No' = FALSE)),
+            checkboxInput('log_scale',
+                          'Log-transform data scale for display',
+                          value = TRUE),
             # FIXME the map_type option should only appear if map tab is selected
             radioButtons('map_type',
                          'Which map to display?',
@@ -195,7 +189,7 @@ server <- function(input, output) {
 
         # Manually calculate breaks for color palette
         val_range <- range(tab_data[['data']][[tab_data[['col_value']]]])
-        if(input[['log_scale']] == TRUE & input[['normalize']] == FALSE) {
+        if(input[['log_scale']] & !input[['normalize']]) {
             color_breaks <- exp(seq(log(val_range[1]), log(val_range[2]), length.out = 10)[2:9])
         } else {
             color_breaks <- seq(val_range[1], val_range[2], length.out = 10)[2:9]
@@ -238,9 +232,9 @@ server <- function(input, output) {
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(vals, center = 1)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] == TRUE & input[['normalize']] == FALSE, 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] & !input[['normalize']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] == TRUE & input[['normalize']] == FALSE, 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] & !input[['normalize']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
         if (input[['map_type']] == 'world') {

@@ -49,7 +49,9 @@ prepare_data <- function(input, tab_id) {
   scale_label_fn <- ifelse(input[['normalize']], scales::label_percent, scales::label_comma)
   
   # Define column name to plot, depending on flow direction and flow origin
-  col_value <- paste('flow', input[['flow_direction']], input[['flow_origin']], sep = '_')
+  # If flow_direction is exports, flow_origin must be domestic.
+  flow_origin <- ifelse(input[['flow_direction']] == 'outbound', 'domestic', input[['flow_origin']])
+  col_value <- paste('flow', input[['flow_direction']], flow_origin, sep = '_')
   col_baseline <- paste(col_value, 'baseline', sep = '_')
   
   # Select data frame to plot.
