@@ -4,9 +4,9 @@ library(shiny)
 library(data.table)
 library(sf)
 library(ggplot2)
-library(gt)
+library(DT)
 
-shinyOptions(cache = cachem::cache_mem(max_size = 20e6)) # Set cache size to approx 20 MB.
+shinyOptions(cache = cachem::cache_mem(max_size = 50e6)) # Set cache size to approx 50 MB.
 
 # Initial processing ------------------------------------------------------
 
@@ -92,6 +92,7 @@ ui <- fluidPage(
                          c('Yes' = TRUE,
                            'No' = FALSE)),
             # FIXME it would also be nice if the log-transformation adaptively defaults to a sensible default. (though it should usually be true)
+            # FIXME also the log transform is ignored for color scale on table and map, if normalize == TRUE. Maybe disable it in that case?
             radioButtons('log_scale',
                          'Log-transform data scale for display?',
                          selected = TRUE,
@@ -128,7 +129,7 @@ ui <- fluidPage(
         mainPanel(
             tabsetPanel(type = 'tabs',
                         tabPanel('Plot', plotOutput('plot')),
-                        tabPanel('Table', gt_output('table')),
+                        tabPanel('Table', dataTableOutput('table')),
                         tabPanel('Map', plotOutput('map'))
             )
         )
@@ -146,7 +147,7 @@ server <- function(input, output) {
         
         plot_geom <- if(input[['log_scale']]) geom_point(size = 3, position = position_dodge(width = 0.1)) else geom_col(position = 'dodge')
 
-        ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']], color = tab_data[['fill_var']])) +
+        p <- ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']], color = tab_data[['fill_var']])) +
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
             plot_geom +
@@ -156,10 +157,13 @@ server <- function(input, output) {
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
             plot_theme
         
+        if (input[['normalize']]) p <- p + geom_hline(yintercept = 1, linetype = 'dotted', size = 1)
+        p
+        
     },
     cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
     
-    output$table <- render_gt({
+    output$table <- renderDataTable({
         validate(need(is_valid_combo(input), valid_combo_msg(input)))
         
         tab_data <- prepare_data(input, tab_id = 'table')
@@ -179,16 +183,36 @@ server <- function(input, output) {
             # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 1)
-            color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2])
+            color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], alpha = 0.75)
+            # If the background is too dark, change text color to white.
+            text_colors <- ifelse(rgb2hsv(col2rgb(color_palette))['s',] > 0.9, 'white', 'black')
         } else {
-            color_palette <- 'Reds'
+            # Hardcode Reds from RColorBrewer with alpha = 0.75
+            color_palette <- c("#FFF5F0BF", "#FEE0D2BF", "#FCBBA1BF", "#FC9272BF", "#FB6A4ABF", 
+                               "#EF3B2CBF", "#CB181DBF", "#A50F15BF", "#67000DBF")
+            text_colors <- rep(c('black', 'white'), c(7, 2))
+        }
+
+        # Manually calculate breaks for color palette
+        val_range <- range(tab_data[['data']][[tab_data[['col_value']]]])
+        if(input[['log_scale']] == TRUE & input[['normalize']] == FALSE) {
+            color_breaks <- exp(seq(log(val_range[1]), log(val_range[2]), length.out = 10)[2:9])
+        } else {
+            color_breaks <- seq(val_range[1], val_range[2], length.out = 10)[2:9]
         }
         
-        gt(tab_data[['data']][order(scenario_diet, scenario_waste)]) %>%
-            cols_label(.list = as.list(c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name)) %>% setNames(names(tab_data[['data']]))) %>%
-            data_color(tab_data[['col_value']], colors = color_palette, alpha = 0.75) %>%
-            fmt_number(columns = 4, n_sigfig = 3) %>%
-            fmt_percent(columns = ifelse(input[['normalize']], 4, 0), decimals = 1, drop_trailing_zeros = TRUE)
+        set(tab_data[['data']], j = tab_data[['col_value']], value = signif(tab_data[['data']][[tab_data[['col_value']]]], 3))
+        
+        dt <- datatable(tab_data[['data']][order(scenario_diet, scenario_waste)],
+                  colnames = c(tab_data[['scale_name']], 'Diet scenario', 'Waste scenario', flow_col_name),
+                  rownames = FALSE,
+                  options = list(pageLength = 50)) %>%
+            formatStyle(columns = tab_data[['col_value']], 
+                        color = styleInterval(color_breaks, text_colors),
+                        backgroundColor = styleInterval(color_breaks, color_palette)) %>%
+            formatCurrency(columns = tab_data[['col_value']], currency = '') 
+        if (input[['normalize']]) dt <- dt %>% formatPercentage(columns = tab_data[['col_value']], digits = 1)
+        dt
     })
 
     output$map <- renderCachedPlot({
@@ -214,9 +238,9 @@ server <- function(input, output) {
             # Remap scale range so that it is centered at 1.
             fill_scale_range_remap <- scale_begin_end(vals, center = 1)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] == TRUE & input[['normalize']] == FALSE, 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] == TRUE & input[['normalize']] == FALSE, 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
         if (input[['map_type']] == 'world') {
