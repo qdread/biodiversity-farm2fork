@@ -84,6 +84,7 @@ ui <- fluidPage(
                         'Food waste reduction scenario (this option only applies to map)',
                         c('Baseline food waste' = 'baseline',
                           '50% food waste reduction' = 'allavoidable')),
+            # FIXME normalization only applies if log scale is FALSE, maybe only enable if log = FALSE?
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
@@ -138,21 +139,18 @@ server <- function(input, output) {
         validate(need(is_valid_combo(input), valid_combo_msg(input)))
         
         tab_data <- prepare_data(input, tab_id = 'plot')
-        
-        plot_geom <- if(input[['log_scale']]) geom_point(size = 3, position = position_dodge(width = 0.1)) else geom_col(position = 'dodge')
 
-        p <- ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']], color = tab_data[['fill_var']])) +
+        plot_geom <- if(input[['log_scale']] & !input[['normalize']]) geom_point(size = 3, position = position_dodge(width = 0.1)) else geom_col(position = 'dodge')
+
+        ggplot(tab_data[['data']], aes_string(x = 'scenario_diet', y = tab_data[['col_value']], fill = tab_data[['fill_var']], color = tab_data[['fill_var']])) +
             facet_wrap(~ scenario_waste, nrow = 1, labeller = labeller(scenario_waste = c('baseline' = 'Baseline food waste',
                                                                                           'allavoidable' = '50% food waste reduction'))) +
             plot_geom +
-            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = c(0, 0.02)), labels = tab_data[['scale_label_fn']](drop0trailing = TRUE)) +
+            tab_data[['scale_fn']](name = tab_data[['y_name']], expand = expansion(mult = 0.01), labels = tab_data[['scale_label_fn']](drop0trailing = TRUE)) +
             scale_fill_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_color_manual(name = tab_data[['scale_name']], values = brewer_cols) +
             scale_x_discrete(name = 'Diet scenario', labels = diet_x_labels) +
             plot_theme
-        
-        if (input[['normalize']]) p <- p + geom_hline(yintercept = 1, linetype = 'dotted', size = 1)
-        p
         
     },
     cacheKeyExpr = { lapply(input_vars, function(x) input[[x]]) })
@@ -171,12 +169,10 @@ server <- function(input, output) {
         
         flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', paste('Flow', flow_units))
         
-        # If scale is divergent, create a palette centered at no change (0 or 1)
+        # If scale is divergent, create a palette centered at no change
         if (input[['normalize']]) {
-            # FIXME Uncomment the below line if we want to center at zero, then change to center=0
-            # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
-            # Remap scale range so that it is centered at 1.
-            fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 1)
+            # Remap scale range so that it is centered at 0.
+            fill_scale_range_remap <- scale_begin_end(tab_data[['data']][[tab_data[['col_value']]]], center = 0)
             color_palette <- scico::scico(9, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], alpha = 0.75)
             # If the background is too dark, change text color to white.
             text_colors <- ifelse(rgb2hsv(col2rgb(color_palette))['s',] > 0.9, 'white', 'black')
@@ -221,20 +217,17 @@ server <- function(input, output) {
         
         tab_data <- prepare_data(input, tab_id = 'map')
         
-        # Get scale to be used across all maps
         vals <- tab_data[['data']][[tab_data[['col_value']]]]
-        if (input[['log_scale']]) scale_range <- range(vals[vals > 0], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE)
         
         # Use color scale depending on whether divergent or sequential is needed
         if (input[['normalize']]) {
-            # FIXME Uncomment the below line if we want to center at zero, then change to center=0
-            # set(tab_data[['data']], j = tab_data[['col_value']], value = tab_data[['data']][[tab_data[['col_value']]]] - 1)
-            # Remap scale range so that it is centered at 1.
-            fill_scale_range_remap <- scale_begin_end(vals, center = 1)
+            scale_range <- range(vals, na.rm = TRUE)
+            fill_scale_range_remap <- scale_begin_end(vals, center = 0)
             
-            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] & !input[['normalize']], 'log10', 'identity'), limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = 'identity', limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']] & !input[['normalize']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
+            if (input[['log_scale']]) scale_range <- range(vals[vals > 0], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE)
+            color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
         if (input[['map_type']] == 'world') {

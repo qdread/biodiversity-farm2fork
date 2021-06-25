@@ -45,7 +45,7 @@ valid_combo_msg <- function(input) {
 
 # This function is called within each of the three tabs to return data to be plotted
 prepare_data <- function(input, tab_id) {
-  scale_fn <- ifelse(input[['log_scale']], scale_y_log10, scale_y_continuous)
+  scale_fn <- ifelse(input[['log_scale']] & !input[['normalize']], scale_y_log10, scale_y_continuous)
   scale_label_fn <- ifelse(input[['normalize']], scales::label_percent, scales::label_comma)
   
   # Define column name to plot, depending on flow direction and flow origin
@@ -63,7 +63,7 @@ prepare_data <- function(input, tab_id) {
     fill_var <- 'ag_good_short_name'
     scale_name <- 'Agricultural goods category'
     y_name <- 'Agricultural goods flow (million USD)'
-    fill_name <- 'Agricultural goods flow\n(million USD)'
+    fill_name <- if (input[['normalize']]) 'Change in goods flow' else 'Agricultural goods flow\n(million USD)'
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_goods_flow_sums)
       dat <- dat[BEA_code %in% input[['goods_subcats']], 
@@ -84,7 +84,7 @@ prepare_data <- function(input, tab_id) {
     fill_var <- 'land_type'
     scale_name <- 'Land use category'
     y_name <- parse(text = 'Land~flow~(km^2)')
-    fill_name <- y_name
+    fill_name <- if (input[['normalize']]) 'Change in land flow' else y_name
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_land_flow_sums)
       dat <- dat[land_type %in% input[['land_subcats']], 
@@ -110,7 +110,7 @@ prepare_data <- function(input, tab_id) {
     fill_var <- 'taxon'
     scale_name <- 'Taxonomic group'
     y_name <- 'Biodiversity threat flow (potential extinctions)'
-    fill_name <- 'Biodiversity threat flow\n(potential extinctions)'
+    fill_name <- if (input[['normalize']]) 'Change in biodiversity threat flow' else 'Biodiversity threat flow\n(potential extinctions)'
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_extinction_flow_sums)
       dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
@@ -133,7 +133,7 @@ prepare_data <- function(input, tab_id) {
   
   # Normalize value by baseline if selected
   if (input[['normalize']]) {
-    set(dat, j = col_value, value = dat[[col_value]]/dat[[col_baseline]])
+    set(dat, j = col_value, value = dat[[col_value]]/dat[[col_baseline]] - 1)
     y_name <- 'Flow relative to baseline scenario'
   }
   
