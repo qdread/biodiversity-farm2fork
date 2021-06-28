@@ -84,12 +84,11 @@ ui <- fluidPage(
                         'Food waste reduction scenario (this option only applies to map)',
                         c('Baseline food waste' = 'baseline',
                           '50% food waste reduction' = 'allavoidable')),
-            # FIXME normalization only applies if log scale is FALSE, maybe only enable if log = FALSE?
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
             # FIXME it would also be nice if the log-transformation adaptively defaults to a sensible default. (though it should usually be true)
-            # FIXME also the log transform is ignored for color scale on table and map, if normalize == TRUE. Maybe disable it in that case?
+            # FIXME also the log transform is entirely ignored if normalize == TRUE. Maybe disable it in that case?
             checkboxInput('log_scale',
                           'Log-transform data scale for display',
                           value = TRUE),
