@@ -48,10 +48,8 @@ prepare_data <- function(input, tab_id) {
   scale_fn <- ifelse(input[['log_scale']] & !input[['normalize']], scale_y_log10, scale_y_continuous)
   scale_label_fn <- ifelse(input[['normalize']], scales::label_percent, scales::label_comma)
   
-  # Define column name to plot, depending on flow direction and flow origin
-  # If flow_direction is exports, flow_origin must be domestic.
-  flow_origin <- ifelse(input[['flow_direction']] == 'outbound', 'domestic', input[['flow_origin']])
-  col_value <- paste('flow', input[['flow_direction']], flow_origin, sep = '_')
+  # Define column name to plot, depending on tab_id and flow_origin
+  col_value <- paste(ifelse(tab_id == 'map', 'flow_outbound', 'flow_inbound'), input[['flow_origin']], sep = '_')
   col_baseline <- paste(col_value, 'baseline', sep = '_')
   
   # Select data frame to plot.
@@ -63,13 +61,13 @@ prepare_data <- function(input, tab_id) {
     fill_var <- 'ag_good_short_name'
     scale_name <- 'Agricultural goods category'
     y_name <- 'Agricultural goods flow (million USD)'
-    fill_name <- if (input[['normalize']]) 'Change in goods flow' else 'Agricultural goods flow\n(million USD)'
+    fill_name <- if (input[['normalize']]) 'Change in goods footprint' else 'Agricultural goods footprint\n(million USD)'
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_goods_flow_sums)
       dat <- dat[BEA_code %in% input[['goods_subcats']], 
                  lapply(.SD, sum), by = .(ag_good_short_name, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
     } else {
-      if (input[['map_type']] == 'usa') {
+      if (input[['flow_origin']] == 'domestic') {
         dat <- copy(county_goods_flow_sums)
         dat <- dat[BEA_code %in% input[['goods_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
                    lapply(.SD, sum), by = .(county, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
@@ -83,21 +81,18 @@ prepare_data <- function(input, tab_id) {
     
     fill_var <- 'land_type'
     scale_name <- 'Land use category'
-    y_name <- parse(text = 'Land~flow~(km^2)')
-    fill_name <- if (input[['normalize']]) 'Change in land flow' else y_name
+    y_name <- parse(text = 'Land~footprint~(km^2)')
+    fill_name <- if (input[['normalize']]) 'Change in land footprint' else y_name
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_land_flow_sums)
       dat <- dat[land_type %in% input[['land_subcats']], 
                  lapply(.SD, sum), by = .(land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
     } else {
-      if (input[['map_type']] == 'usa') {
+      if (input[['flow_origin']] == 'domestic') {
         dat <- copy(county_land_flow_sums)
         dat <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
                    lapply(.SD, sum), by = .(county, land_type, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
       } else {
-        # Hardcode value column names for world map.
-        col_value <- 'flow_outbound_foreign'
-        col_baseline <- 'flow_outbound_foreign_baseline'
         dat <- copy(foreign_land_flow_sums)
         dat <- dat[land_type %in% input[['land_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
                    lapply(.SD, sum), by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
@@ -109,21 +104,18 @@ prepare_data <- function(input, tab_id) {
     
     fill_var <- 'taxon'
     scale_name <- 'Taxonomic group'
-    y_name <- 'Biodiversity threat flow (potential extinctions)'
-    fill_name <- if (input[['normalize']]) 'Change in biodiversity threat flow' else 'Biodiversity threat flow\n(potential extinctions)'
+    y_name <- 'Biodiversity threat footprint (potential extinctions)'
+    fill_name <- if (input[['normalize']]) 'Change in biodiversity threat footprint' else 'Biodiversity threat footprint\n(potential extinctions)'
     if (tab_id %in% c('plot', 'table')) {
       dat <- copy(county_extinction_flow_sums)
       dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']], 
                  lapply(.SD, sum), by = .(taxon, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
     } else {
-      if (input[['map_type']] == 'usa') {
+      if (input[['flow_origin']] == 'domestic') {
         dat <- copy(county_extinction_flow_sums)
         dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']], 
                    lapply(.SD, sum), by = .(county, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
       } else {
-        # Hardcode value column names for world map.
-        col_value <- 'flow_outbound_foreign'
-        col_baseline <- 'flow_outbound_foreign_baseline'
         dat <- copy(foreign_extinction_flow_sums)
         dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']] & scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']],
                    lapply(.SD, sum), by = .(ISO_A3, scenario_diet, scenario_waste), .SDcols = c(col_value, col_baseline)]
@@ -134,7 +126,7 @@ prepare_data <- function(input, tab_id) {
   # Normalize value by baseline if selected
   if (input[['normalize']]) {
     set(dat, j = col_value, value = dat[[col_value]]/dat[[col_baseline]] - 1)
-    y_name <- 'Flow relative to baseline scenario'
+    y_name <- 'Footprint relative to baseline scenario'
   }
   
   return(list(data = dat, scale_fn = scale_fn, scale_label_fn = scale_label_fn, fill_var = fill_var, scale_name = scale_name, y_name = y_name, fill_name = fill_name, col_value = col_value, col_baseline = col_baseline))

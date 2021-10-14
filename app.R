@@ -30,10 +30,10 @@ county_goods_flow_sums <- bea_lookup[county_goods_flow_sums, on = .(BEA_code)]
 taxa_options <- c('plants', 'amphibians', 'birds', 'mammals', 'reptiles')
 goods_options <- setNames(bea_lookup[['BEA_code']][1:10], bea_lookup[['ag_good_short_name']][1:10])
 land_options <- c('annual', 'permanent', 'pasture')
-names(land_options) <- c('Annual cropland', 'Permanent cropland', 'Pastureland')
+names(land_options) <- c('annual cropland', 'permanent cropland', 'pastureland')
 
 # Names of input variables to be used for cache key expression
-input_vars <- c('flow_type', 'flow_origin', 'flow_direction', 'scenario_diet', 'scenario_waste', 'normalize', 'log_scale', 'map_type', 'goods_subcats', 'land_subcats', 'taxa_subcats')
+input_vars <- c('flow_type', 'flow_origin', 'scenario_diet', 'scenario_waste', 'normalize', 'log_scale', 'goods_subcats', 'land_subcats', 'taxa_subcats')
 
 # gg stuff
 plot_theme <- theme_bw() +
@@ -59,20 +59,17 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             radioButtons('flow_type',
-                         'Flow type',
+                         'Footprint type',
                          selected = 'land',
                          c('Agricultural goods' = 'goods',
                            'Virtual land transfers' = 'land',
                            'Virtual biodiversity threat transfers' = 'biodiv')),
-            radioButtons('flow_direction',
-                         'Flow direction',
-                         c('Imports (consumption)' = 'inbound',
-                           'Exports (production)' = 'outbound')),
             radioButtons('flow_origin',
-                         'Flow origin (this option only applies if imports are displayed)',
+                         'Footprint origin',
                          c('Domestic only' = 'domestic',
                            'Foreign only' = 'foreign',
                            'Total (domestic + foreign)' = 'total')),
+            # FIXME It would be best to disable the total option if map tab is active.
             selectInput('scenario_diet',
                         'Diet shift scenario (this option only applies to map)',
                         c('Baseline diet' = 'baseline',
@@ -84,6 +81,7 @@ ui <- fluidPage(
                         'Food waste reduction scenario (this option only applies to map)',
                         c('Baseline food waste' = 'baseline',
                           '50% food waste reduction' = 'allavoidable')),
+            # FIXME The above two menus should only be available if map tab is active.
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
@@ -92,11 +90,6 @@ ui <- fluidPage(
             checkboxInput('log_scale',
                           'Log-transform data scale for display',
                           value = TRUE),
-            # FIXME the map_type option should only appear if map tab is selected
-            radioButtons('map_type',
-                         'Which map to display?',
-                         c('USA by county' = 'usa',
-                           'World by country' = 'world')),
             # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
             # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
             selectInput('goods_subcats',
@@ -166,7 +159,7 @@ server <- function(input, output) {
         
         flow_units <- switch(input[['flow_type']], land = '(hectares)', goods = '(million USD)', biodiv = '(potential extinctions)')
         
-        flow_col_name <- ifelse(input[['normalize']], 'Change in flow relative to baseline', paste('Flow', flow_units))
+        flow_col_name <- ifelse(input[['normalize']], 'Change in footprint relative to baseline', paste('Footprint', flow_units))
         
         # If scale is divergent, create a palette centered at no change
         if (input[['normalize']]) {
@@ -208,10 +201,10 @@ server <- function(input, output) {
         
         validate(
             need(is_valid_combo(input), valid_combo_msg(input)),
-            need(!(input[['map_type']] == 'world' & input[['flow_direction']] == 'inbound'),
-                 'Only outbound flows (production) can be shown for foreign countries.'),
-            need(!(input[['map_type']] == 'world' & input[['flow_type']] == 'goods'),
-                 'Only land and biodiversity flows can be shown for foreign countries.')
+            need(!(input[['flow_origin']] == 'foreign' & input[['flow_type']] == 'goods'),
+                 'Only land and biodiversity footprints can be shown for foreign countries.'),
+            need(input[['flow_origin']] != 'total',
+                 'Summed domestic + foreign footprints cannot be shown on the map.')
         )
         
         tab_data <- prepare_data(input, tab_id = 'map')
@@ -229,7 +222,7 @@ server <- function(input, output) {
             color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
-        if (input[['map_type']] == 'world') {
+        if (input[['flow_origin']] == 'foreign') {
             tab_data[['data']] <- merge(global_country_map, tab_data[['data']], by = 'ISO_A3', all.x = TRUE)
         } else {
             tab_data[['data']] <- merge(county_map, tab_data[['data']], by = 'county', all.x = TRUE)
