@@ -33,7 +33,7 @@ land_options <- c('annual', 'permanent', 'pasture')
 names(land_options) <- c('annual cropland', 'permanent cropland', 'pastureland')
 
 # Names of input variables to be used for cache key expression
-input_vars <- c('flow_type', 'flow_origin', 'scenario_diet', 'scenario_waste', 'normalize', 'log_scale', 'goods_subcats', 'land_subcats', 'taxa_subcats')
+input_vars <- c('flow_type', 'flow_origin', 'scenario_diet', 'scenario_waste', 'normalize', 'log_scale', 'separate_cats', 'goods_subcats', 'land_subcats', 'taxa_subcats')
 
 # gg stuff
 plot_theme <- theme_bw() +
@@ -62,8 +62,8 @@ ui <- fluidPage(
                          'Footprint type',
                          selected = 'land',
                          c('Agricultural goods' = 'goods',
-                           'Virtual land transfers' = 'land',
-                           'Virtual biodiversity threat transfers' = 'biodiv')),
+                           'Land' = 'land',
+                           'Biodiversity threat' = 'biodiv')),
             radioButtons('flow_origin',
                          'Footprint origin',
                          c('Domestic only' = 'domestic',
@@ -89,6 +89,9 @@ ui <- fluidPage(
             # FIXME also the log transform is entirely ignored if normalize == TRUE. Maybe disable it in that case?
             checkboxInput('log_scale',
                           'Log-transform data scale for display',
+                          value = TRUE),
+            checkboxInput('separate_cats',
+                          'Display categories separately',
                           value = TRUE),
             # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
             # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
@@ -131,6 +134,14 @@ server <- function(input, output) {
         validate(need(is_valid_combo(input), valid_combo_msg(input)))
         
         tab_data <- prepare_data(input, tab_id = 'plot')
+        
+        # If separate_cats is unchecked, sum the subcategories together
+        if (!input[['separate_cats']]) {
+            cat_column <- names(tab_data[['data']])[1]
+            tab_data[['data']] <- tab_data[['data']][, lapply(.SD, sum), by = .(scenario_diet, scenario_waste), .SDcols = tab_data[['col_value']]]
+            tab_data[['data']][, (cat_column) := 'total']
+            setcolorder(tab_data[['data']], c(cat_column, 'scenario_diet', 'scenario_waste', tab_data[['col_value']]))
+        }
 
         plot_geom <- if(input[['log_scale']] & !input[['normalize']]) geom_point(size = 3, position = position_dodge(width = 0.1)) else geom_col(position = 'dodge')
 
@@ -152,6 +163,14 @@ server <- function(input, output) {
         
         tab_data <- prepare_data(input, tab_id = 'table')
         tab_data[['data']][, grep('baseline', names(tab_data[['data']]), value = TRUE) := NULL]
+        
+        # If separate_cats is unchecked, sum the subcategories together
+        if (!input[['separate_cats']]) {
+            cat_column <- names(tab_data[['data']])[1]
+            tab_data[['data']] <- tab_data[['data']][, lapply(.SD, sum), by = .(scenario_diet, scenario_waste), .SDcols = tab_data[['col_value']]]
+            tab_data[['data']][, (cat_column) := 'total']
+            setcolorder(tab_data[['data']], c(cat_column, 'scenario_diet', 'scenario_waste', tab_data[['col_value']]))
+        }
         
         # Use long names for diet and waste scenarios in table.
         tab_data[['data']][, scenario_diet := factor(scenario_diet, labels = diet_long_names)]
