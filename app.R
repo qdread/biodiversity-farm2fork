@@ -5,6 +5,7 @@ library(data.table)
 library(sf)
 library(ggplot2)
 library(DT)
+library(shinyjs)
 
 shinyOptions(cache = cachem::cache_mem(max_size = 50e6)) # Set cache size to approx 50 MB.
 
@@ -67,7 +68,9 @@ waste_long_names <- c('baseline food waste', '50% waste reduction')
 # UI ----------------------------------------------------------------------
 
 ui <- fluidPage(
-
+    
+    useShinyjs(),  # Set up shinyjs
+    
     # Application title
     titlePanel('Biodiversity: Farm to Fork'),
 
@@ -140,6 +143,11 @@ ui <- fluidPage(
 # Server function (render plots and maps) ---------------------------------
 
 server <- function(input, output) {
+    
+    # turn off log scale option for normalize
+    observe({ 
+        toggleState("log_scale", condition = input$normalize == FALSE)
+    })
     
     output$plot <- renderCachedPlot({
         validate(need(is_valid_combo(input), valid_combo_msg(input)), 
