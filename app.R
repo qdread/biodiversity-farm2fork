@@ -87,12 +87,6 @@ ui <- fluidPage(
             uiOutput("subcats_output"),
             uiOutput("selectall"),
             # FIXME The following two menus should only be available if map tab is active.
-            selectInput('scenario_diet',
-                        'Diet shift scenario (for map only)',
-                        scenario_diet_options),
-            selectInput('scenario_waste',
-                        'Food waste reduction scenario (for map only)',
-                        scenario_waste_options),
             # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
             # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
             checkboxInput('normalize',
@@ -105,7 +99,12 @@ ui <- fluidPage(
                           value = TRUE),
             checkboxInput('separate_cats',
                           'Display categories separately',
-                          value = TRUE)
+                          value = TRUE),
+            # map specific options
+            conditionalPanel(condition="input.tabselected==3", 
+                             selectInput('scenario_diet', 'Diet shift scenario (for map only)', scenario_diet_options),
+                             selectInput('scenario_waste','Food waste reduction scenario (for map only)', scenario_waste_options)),
+            
         ),
 
         # Show plots
