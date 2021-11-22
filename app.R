@@ -83,11 +83,7 @@ ui <- fluidPage(
                          c('Agricultural goods' = 'goods',
                            'Land' = 'land',
                            'Biodiversity threat' = 'biodiv')),
-            radioButtons('flow_origin',
-                         'Footprint origin',
-                         c('Domestic only' = 'domestic',
-                           'Foreign only' = 'foreign',
-                           'Total (domestic + foreign)' = 'total')),  # FIXME It would be best to disable the total option if map tab is active.
+            uiOutput("flow_origin"),
             # FIXME The following two menus should only be available if map tab is active.
             selectInput('scenario_diet',
                         'Diet shift scenario (for map only)',
@@ -132,9 +128,10 @@ ui <- fluidPage(
         # Show plots
         mainPanel(
             tabsetPanel(type = 'tabs',
-                        tabPanel('Plot', plotOutput('plot')),
-                        tabPanel('Table', dataTableOutput('table')),
-                        tabPanel('Map', plotOutput('map'))
+                        tabPanel('Plot', value = 1, plotOutput('plot')),
+                        tabPanel('Table', value = 2, dataTableOutput('table')),
+                        tabPanel('Map', value = 3, plotOutput('map')),
+                        id = 'tabselected'
             )
         )
     )
@@ -147,6 +144,15 @@ server <- function(input, output) {
     # turn off log scale option for normalize
     observe({ 
         toggleState("log_scale", condition = input$normalize == FALSE)
+    })
+    
+    # flow origin UI based on selected tab
+    output$flow_origin <- renderUI({
+        switch(input$tabselected,
+               "3" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign')),
+               "2" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign','Total (domestic + foreign)' = 'total')),
+               "1" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign','Total (domestic + foreign)' = 'total'))
+        )
     })
     
     output$plot <- renderCachedPlot({
