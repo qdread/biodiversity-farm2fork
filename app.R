@@ -84,6 +84,7 @@ ui <- fluidPage(
                            'Land' = 'land',
                            'Biodiversity threat' = 'biodiv')),
             uiOutput("flow_origin"),
+            uiOutput("subcats_output"),
             # FIXME The following two menus should only be available if map tab is active.
             selectInput('scenario_diet',
                         'Diet shift scenario (for map only)',
@@ -152,6 +153,27 @@ server <- function(input, output) {
                "3" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign')),
                "2" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign','Total (domestic + foreign)' = 'total')),
                "1" = radioButtons('flow_origin','Footprint origin', c('Domestic only' = 'domestic','Foreign only' = 'foreign','Total (domestic + foreign)' = 'total'))
+        )
+    })
+    
+    # subcategory selection based on flow type
+    output$subcats_output <- renderUI({
+        switch(input$flow_type, 
+               "goods" = selectInput('goods_subcats',
+                                     'Which goods to display?',
+                                     multiple = TRUE,
+                                     selected = goods_options,
+                                     goods_options),
+               "land" = selectInput('land_subcats',
+                                    'Which land use types to display?',
+                                    multiple = TRUE,
+                                    selected = land_options,
+                                    land_options),
+               "biodiv" = selectInput('taxa_subcats',
+                                      'Which taxonomic groups to display?',
+                                      multiple = TRUE,
+                                      selected = taxa_options,
+                                      taxa_options)
         )
     })
     
