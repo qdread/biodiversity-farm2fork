@@ -306,7 +306,7 @@ server <- function(input, output, session) {
             
             color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = 'identity', limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            if (input[['log_scale']]) scale_range <- range(vals[vals > 0], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE)
+            if (input[['log_scale']]) scale_range <- range(vals[vals > 1e-6], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE) # Note: here I round extremely small values to 0 for log scale.
             color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
@@ -318,7 +318,7 @@ server <- function(input, output, session) {
         
         # FIXME How can we make the map maximize the available space better?
         ggplot() +
-            geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), color = NA) +
             (if (input[['separate_cats']]) facet_wrap(as.formula(paste('~', category_name))) else NULL) +
             color_scale +
             map_theme +

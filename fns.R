@@ -27,7 +27,7 @@ is_valid_combo <- function(input) {
   any(c(
     input[['flow_type']] == 'goods' & length(input[['goods_subcats']]) > 0,
     input[['flow_type']] == 'land' & length(input[['land_subcats']]) > 0,
-    input[['flow_type']] == 'biodiv' & length(input[['taxa_subcats']]) > 0 & length(input[['land_subcats']]) > 0
+    input[['flow_type']] == 'biodiv' & length(input[['taxa_subcats']]) > 0
   ))
   
 }
@@ -36,7 +36,7 @@ valid_combo_msg <- function(input) {
   x <- switch(input[['flow_type']],
               'land' = 'land use types.',
               'goods' = 'agricultural goods.',
-              'biodiv' = 'taxonomic groups and one of the land use types.')
+              'biodiv' = 'taxonomic groups.')
   paste('Please select at least one of the', x)
 }
 
@@ -118,7 +118,7 @@ prepare_data <- function(input, tab_id) {
       map_group_var <- 'county'
     }
     
-    dat <- dat[land_type %in% input[['land_subcats']] & taxon %in% input[['taxa_subcats']]]
+    dat <- dat[taxon %in% input[['taxa_subcats']]]
     if (tab_id == 'map') dat <- dat[scenario_diet %in% input[['scenario_diet']] & scenario_waste %in% input[['scenario_waste']]]
     
     sum_by <- c(if(tab_id == 'map') map_group_var else NULL,
