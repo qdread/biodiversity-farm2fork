@@ -86,14 +86,9 @@ ui <- fluidPage(
             uiOutput("flow_origin"),
             uiOutput("subcats_output"),
             uiOutput("selectall"),
-            # FIXME The following two menus should only be available if map tab is active.
-            # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
-            # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
-            # FIXME it would also be nice if the log-transformation adaptively defaults to a sensible default. (though it should usually be true)
-            # FIXME also the log transform is entirely ignored if normalize == TRUE. Maybe disable it in that case?
             checkboxInput('log_scale',
                           'Log-transform data scale for display',
                           value = TRUE),
