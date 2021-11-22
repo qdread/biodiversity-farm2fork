@@ -85,6 +85,7 @@ ui <- fluidPage(
                            'Biodiversity threat' = 'biodiv')),
             uiOutput("flow_origin"),
             uiOutput("subcats_output"),
+            uiOutput("selectall"),
             # FIXME The following two menus should only be available if map tab is active.
             selectInput('scenario_diet',
                         'Diet shift scenario (for map only)',
@@ -92,27 +93,8 @@ ui <- fluidPage(
             selectInput('scenario_waste',
                         'Food waste reduction scenario (for map only)',
                         scenario_waste_options),
-            
             # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
             # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
-            selectInput('goods_subcats',
-                        'Which goods to display?',
-                        multiple = TRUE,
-                        selected = goods_options[1],
-                        goods_options
-                        ),
-            selectInput('land_subcats',
-                        'Which land use types to display?',
-                        multiple = TRUE,
-                        selected = land_options,
-                        land_options
-            ), 
-            selectInput('taxa_subcats',
-                        'Which taxonomic groups to display?',
-                        multiple = TRUE,
-                        selected = taxa_options,
-                        taxa_options
-            ),
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
@@ -140,7 +122,7 @@ ui <- fluidPage(
 
 # Server function (render plots and maps) ---------------------------------
 
-server <- function(input, output) {
+server <- function(input, output, session) {
     
     # turn off log scale option for normalize
     observe({ 
@@ -175,6 +157,54 @@ server <- function(input, output) {
                                       selected = taxa_options,
                                       taxa_options)
         )
+    })
+    
+    # select all button and math
+    output$selectall <- renderUI({
+        switch(input$flow_type, 
+               "goods" = actionButton("selectall_goods", label="Select/Deselect all goods"),
+               "land" = actionButton("selectall_land", label="Select/Deselect all land use types"),
+               "biodiv" =  actionButton("selectall_taxa", label="Select/Deselect all taxa")
+        )
+    })
+    observe({
+        req(input$selectall_goods)
+        if (input$selectall_goods > 0) {
+            if (input$selectall_goods %% 2 == 0){
+                updateSelectInput(session=session, inputId="goods_subcats",
+                                  choices = goods_options,
+                                  selected = goods_options)}
+            else {
+                updateSelectInput(session=session, inputId="goods_subcats",
+                                  choices = goods_options,
+                                  selected = c())}}
+    })
+    
+    observe({
+        req(input$selectall_land)
+        
+        if (input$selectall_land > 0) {
+            if (input$selectall_land %% 2 == 0){
+                updateSelectInput(session=session, inputId="land_subcats",
+                                  choices = land_options,
+                                  selected = land_options)}
+            else {
+                updateSelectInput(session=session, inputId="land_subcats",
+                                  choices = land_options,
+                                  selected = c())}}
+    })
+    observe({
+        req(input$selectall_taxa)
+        
+        if (input$selectall_taxa > 0) {
+            if (input$selectall_taxa %% 2 == 0){
+                updateSelectInput(session=session, inputId="taxa_subcats",
+                                  choices = taxa_options,
+                                  selected = taxa_options)}
+            else {
+                updateSelectInput(session=session, inputId="taxa_subcats",
+                                  choices = taxa_options,
+                                  selected = c())}}
     })
     
     output$plot <- renderCachedPlot({
