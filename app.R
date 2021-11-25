@@ -86,14 +86,9 @@ ui <- fluidPage(
             uiOutput("flow_origin"),
             uiOutput("subcats_output"),
             uiOutput("selectall"),
-            # FIXME The following two menus should only be available if map tab is active.
-            # FIXME The following input options should only be enabled if the corresponding flow_type is selected.
-            # FIXME desired behavior is to have all selected at first, then you can deselect them all with one click to select one. (currently you have to deselect each one individually I think)
             checkboxInput('normalize',
                           'Normalize values relative to baseline',
                           value = FALSE),
-            # FIXME it would also be nice if the log-transformation adaptively defaults to a sensible default. (though it should usually be true)
-            # FIXME also the log transform is entirely ignored if normalize == TRUE. Maybe disable it in that case?
             checkboxInput('log_scale',
                           'Log-transform data scale for display',
                           value = TRUE),
@@ -306,7 +301,7 @@ server <- function(input, output, session) {
             
             color_scale <- scico::scale_fill_scico(name = tab_data[['fill_name']], trans = 'identity', limits = scale_range, palette = 'vik', begin = fill_scale_range_remap[1], end = fill_scale_range_remap[2], labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         } else {
-            if (input[['log_scale']]) scale_range <- range(vals[vals > 0], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE)
+            if (input[['log_scale']]) scale_range <- range(vals[vals > 1e-6], na.rm = TRUE) else scale_range <- range(vals, na.rm = TRUE) # Note: here I round extremely small values to 0 for log scale.
             color_scale <- scale_fill_viridis_c(name = tab_data[['fill_name']], trans = ifelse(input[['log_scale']], 'log10', 'identity'), limits = scale_range, labels = tab_data[['scale_label_fn']](drop0trailing = TRUE))
         }
         
@@ -318,7 +313,7 @@ server <- function(input, output, session) {
         
         # FIXME How can we make the map maximize the available space better?
         ggplot() +
-            geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), size = 0.25) +
+            geom_sf(data = tab_data[['data']], aes_string(fill = tab_data[['col_value']]), color = NA) +
             (if (input[['separate_cats']]) facet_wrap(as.formula(paste('~', category_name))) else NULL) +
             color_scale +
             map_theme +
