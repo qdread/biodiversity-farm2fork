@@ -135,21 +135,21 @@ server <- function(input, output, session) {
     # subcategory selection based on flow type
     output$subcats_output <- renderUI({
         switch(input$flow_type, 
-               "goods" = selectInput('goods_subcats',
+               "goods" = checkboxGroupInput('goods_subcats',
                                      'Which goods to display?',
-                                     multiple = TRUE,
+                                     # multiple = TRUE,
                                      selected = goods_options,
-                                     goods_options),
-               "land" = selectInput('land_subcats',
+                                     choices = goods_options),
+               "land" = checkboxGroupInput('land_subcats',
                                     'Which land use types to display?',
-                                    multiple = TRUE,
+                                    # multiple = TRUE,
                                     selected = land_options,
-                                    land_options),
-               "biodiv" = selectInput('taxa_subcats',
+                                    choices = land_options),
+               "biodiv" = checkboxGroupInput('taxa_subcats',
                                       'Which taxonomic groups to display?',
-                                      multiple = TRUE,
+                                      # multiple = TRUE,
                                       selected = taxa_options,
-                                      taxa_options)
+                                      choices = taxa_options)
         )
     })
     
@@ -165,11 +165,11 @@ server <- function(input, output, session) {
         req(input$selectall_goods)
         if (input$selectall_goods > 0) {
             if (input$selectall_goods %% 2 == 0){
-                updateSelectInput(session=session, inputId="goods_subcats",
+                updateCheckboxGroupInput(session=session, inputId="goods_subcats",
                                   choices = goods_options,
                                   selected = goods_options)}
             else {
-                updateSelectInput(session=session, inputId="goods_subcats",
+                updateCheckboxGroupInput(session=session, inputId="goods_subcats",
                                   choices = goods_options,
                                   selected = c())}}
     })
@@ -179,11 +179,11 @@ server <- function(input, output, session) {
         
         if (input$selectall_land > 0) {
             if (input$selectall_land %% 2 == 0){
-                updateSelectInput(session=session, inputId="land_subcats",
+                updateCheckboxGroupInput(session=session, inputId="land_subcats",
                                   choices = land_options,
                                   selected = land_options)}
             else {
-                updateSelectInput(session=session, inputId="land_subcats",
+                updateCheckboxGroupInput(session=session, inputId="land_subcats",
                                   choices = land_options,
                                   selected = c())}}
     })
@@ -192,11 +192,11 @@ server <- function(input, output, session) {
         
         if (input$selectall_taxa > 0) {
             if (input$selectall_taxa %% 2 == 0){
-                updateSelectInput(session=session, inputId="taxa_subcats",
+                updateCheckboxGroupInput(session=session, inputId="taxa_subcats",
                                   choices = taxa_options,
                                   selected = taxa_options)}
             else {
-                updateSelectInput(session=session, inputId="taxa_subcats",
+                updateCheckboxGroupInput(session=session, inputId="taxa_subcats",
                                   choices = taxa_options,
                                   selected = c())}}
     })
